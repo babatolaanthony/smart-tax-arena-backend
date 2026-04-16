@@ -25,8 +25,6 @@ export class RefreshTokensService {
   ): Promise<{ refreshToken: string }> {
     const payload = { sub: id, email };
 
-    console.log('I want to generate refresh token');
-
     const refreshToken = await this.jwtService.signAsync(payload, {
       expiresIn: '7d',
     });
@@ -93,8 +91,6 @@ export class RefreshTokensService {
     const deleteRes = await this.refreshTokenModel.findByIdAndDelete(
       refreshTokenExist._id,
     );
-
-    console.log('deleteRes:', deleteRes);
 
     return 'Token deleted successfully';
   }

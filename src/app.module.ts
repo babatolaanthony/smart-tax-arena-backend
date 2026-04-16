@@ -1,3 +1,4 @@
+import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -11,6 +12,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CalculatorsModule } from './modules/calculators/calculators.module';
 import { CaseLawModule } from './modules/case-law/case-law.module';
 import { DeadlinesModule } from './modules/deadlines/deadlines.module';
+import { DocumentProcessingModule } from './modules/document-processing/document-processing.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { RefreshTokensModule } from './modules/refresh-tokens/refresh-tokens.module';
@@ -19,7 +21,6 @@ import { TaxLawsModule } from './modules/tax-laws/tax-laws.module';
 import { TaxTipsModule } from './modules/tax-tips/tax-tips.module';
 import { TokensModule } from './modules/tokens/tokens.module';
 import { UsersModule } from './modules/users/users.module';
-import { DocumentProcessingModule } from './modules/document-processing/document-processing.module';
 
 @Module({
   imports: [
@@ -37,10 +38,8 @@ import { DocumentProcessingModule } from './modules/document-processing/document
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        // const uri = configService.get<string>('MONGO_URI');
-        const uri = process.env.MONGO_URI;
-
-        console.log('MONGO_URI:', uri);
+        const uri = configService.get<string>('MONGO_URI');
+        // const uri = process.env.MONGO_URI;
 
         return {
           uri,
@@ -67,87 +66,34 @@ import { DocumentProcessingModule } from './modules/document-processing/document
           serverSelectionTimeoutMS: 5000,
         };
       },
-      // useFactory: (configService: ConfigService) => ({
-      //   uri: configService.getOrThrow<string>('MONGO_URI'),
-
-      //   connectionFactory: (connection) => {
-      //     console.log('Connecting to database...');
-      //     if (connection.readyState === 1) {
-      //       console.log(`MongoDB connected to database: ${connection.name}`);
-      //     }
-
-      //     connection.on('reconnected', () => {
-      //       console.log('🔄 MongoDB reconnected...');
-      //     });
-
-      //     connection.on('error', (error) => {
-      //       console.error('MongoDB connection error:', error);
-      //     });
-
-      //     connection.on('disconnected', () => {
-      //       console.warn('MongoDB disconnected');
-      //     });
-
-      //     return connection;
-      //   },
-      // }),
     }),
 
-    // BullModule.forRootAsync({
-    //   inject: [ConfigService],
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const redisUrl = configService.get<string>('REDIS_URL');
 
-    //   useFactory: (configService: ConfigService) => {
-    //     const redisUrl = configService.getOrThrow<string>('REDIS_URL');
+        if (redisUrl) {
+          const redisArray = redisUrl.split(':');
 
-    //     console.log('redisUrl:', redisUrl);
+          const url = new URL(redisUrl);
+          return {
+            redis: {
+              host: url.hostname,
+              port: Number(url.port),
+              maxRetriesPerRequest: null,
+            },
+          };
+        }
 
-    //     if (redisUrl && !redisUrl.includes('localhost')) {
-    //       console.log('Redis does not include localhost');
-    //       return {
-    //         redis: {
-    //           url: redisUrl,
-    //           maxRetriesPerRequest: null,
-    //         },
-    //       };
-    //     }
-
-    //     console.log('This is localhost redis');
-    //     return {
-    //       redis: {
-    //         host: 'localhost',
-    //         port: 6379,
-    //       },
-    //     };
-    //   },
-    // }),
-
-    // TO BE RETURNED
-    // BullModule.forRootAsync({
-    //   inject: [ConfigService],
-    //   useFactory: (configService: ConfigService) => {
-    //     const redisUrl = configService.get<string>('REDIS_URL');
-
-    //     if (redisUrl) {
-    //       const redisArray = redisUrl.split(':');
-
-    //       const url = new URL(redisUrl);
-    //       return {
-    //         redis: {
-    //           host: url.hostname,
-    //           port: Number(url.port),
-    //           maxRetriesPerRequest: null,
-    //         },
-    //       };
-    //     }
-
-    //     return {
-    //       redis: {
-    //         host: '127.0.0.1',
-    //         port: 6379,
-    //       },
-    //     };
-    //   },
-    // }),
+        return {
+          redis: {
+            host: '127.0.0.1',
+            port: 6379,
+          },
+        };
+      },
+    }),
     MailModule,
     AuthModule,
     TokensModule,

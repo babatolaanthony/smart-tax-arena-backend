@@ -38,8 +38,6 @@ export class AuthService {
     private refreshTokensService: RefreshTokensService,
   ) {}
   async registerUser(registerUserDto: RegisterUserDto) {
-    console.log('registerUserDto:', registerUserDto);
-
     const { firstName, lastName, email, password, whatsappPhoneNumber } =
       registerUserDto;
 
@@ -65,8 +63,6 @@ export class AuthService {
 
     const newUser = await this.usersRepository.create(payload);
 
-    console.log('newUser:', newUser);
-
     const token = generateCode(6);
     const input = {
       user: newUser._id,
@@ -75,14 +71,12 @@ export class AuthService {
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     };
     const userToken = await this.tokensRepository.create(input);
-    console.log('userToken:', userToken);
 
     const mailResponse = await this.mailService.sendVerificationEmail(
       newUser.email,
       newUser.firstName,
       userToken.token,
     );
-    console.log('mailResponse:', mailResponse);
 
     return {
       data: null,
@@ -136,7 +130,6 @@ export class AuthService {
     const { email, password } = loginDto;
 
     const user = await this.usersRepository.findByEmail(email);
-    console.log('user:', user);
 
     if (!user || user === null) {
       throw new UnauthorizedException({
@@ -149,7 +142,6 @@ export class AuthService {
     const hash = user?.password;
 
     if (!hash) {
-      console.log('password issue:', user);
       throw new UnauthorizedException({
         message: 'Invalid credentials',
         success: false,
@@ -158,10 +150,7 @@ export class AuthService {
     }
     const passwordMatch = await this.comaparePassword(password, hash);
 
-    console.log('passwordMatch:', passwordMatch);
-
     if (passwordMatch !== true) {
-      console.log('passwordMatch:', passwordMatch);
       throw new UnauthorizedException({
         message: 'Invalid credentials.',
         status: 401,
@@ -208,8 +197,6 @@ export class AuthService {
       );
 
       const { password, ...others } = user;
-
-      console.log('others:', others);
 
       return {
         refreshToken: refreshToken.refreshToken,
@@ -410,7 +397,6 @@ export class AuthService {
     id: Types.ObjectId,
     role: string,
   ) {
-    console.log('I want to generate access token');
     const payload = { sub: id, email, role };
 
     const accessToken = await this.jwtService.signAsync(payload, {

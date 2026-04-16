@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, Types } from 'mongoose';
+import { QueryWithPaginationDto } from '../../../common/dto/query-with-pagination';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { Part, PartDocument } from '../schemas/part.schema';
 import { Schedule, ScheduleDocument } from '../schemas/schedule.schema';
@@ -10,7 +11,11 @@ import {
 } from '../schemas/search-index.schema';
 import { Section, SectionDocument } from '../schemas/section.schema';
 import { SubSection, SubSectionDocument } from '../schemas/sub-section.schema';
-import { TaxLaw, TaxLawDocument } from '../schemas/tax-law.schema';
+import {
+  TaxLaw,
+  TaxLawDocument,
+  TaxLawStatus,
+} from '../schemas/tax-law.schema';
 
 @Injectable()
 export class TaxLawsRepository {
@@ -484,7 +489,7 @@ export class TaxLawsRepository {
   //   }
   // }
 
-  async createFullTaxLawDocument(parsed: any) {
+  async createFullTaxLawDocumentWithArray(parsed: any) {
     try {
       // 1️⃣ Create the Parent TaxLaw first
       const taxLaw = await this.taxLawModel.create({
@@ -495,10 +500,6 @@ export class TaxLawsRepository {
 
       let totalSectionsCount = 0;
       const chapterIds: any[] = [];
-
-      console.log('parsed.chapters[0]:', parsed.chapters[0]);
-      console.log('parsed.chapters[0].parts[0]:', parsed.chapters[0].parts[0]);
-      console.log('parsed.chapters[0].parts[0]:', parsed.chapters[0].parts[0]);
 
       // Process one chapter at a time to stay safe with memory
       for (const ch of parsed.chapters || []) {
@@ -621,7 +622,7 @@ export class TaxLawsRepository {
     }
   }
 
-  async createFullTaxLawDocumentWithoutArray(parsed: any) {
+  async createFullTaxLawDocumentWithoutTransaction(parsed: any) {
     try {
       // 1️⃣ Create the Parent TaxLaw
       // We only store 'totalSections' here; 'chapters' and 'schedules' arrays are removed.
@@ -633,6 +634,10 @@ export class TaxLawsRepository {
       });
 
       let totalSectionsCount = 0;
+
+      console.log('parsed.chapters[0]:', parsed.chapters[0]);
+      console.log('parsed.chapters[0].parts[0]:', parsed.chapters[0].parts[0]);
+      console.log('parsed.chapters[0].parts[0]:', parsed.chapters[0].parts[0]);
 
       for (const ch of parsed.chapters || []) {
         // 2️⃣ Create Chapter (Points to TaxLaw)
@@ -715,6 +720,129 @@ export class TaxLawsRepository {
     }
   }
 
+  async createFullTaxLawDocument(parsed: any) {
+    // 1️⃣ Start the Session
+    const session = await this.taxLawModel.db.startSession();
+    session.startTransaction();
+
+    try {
+      // 2️⃣ Create the Parent TaxLaw
+      // Pass { session } to every operation to keep it within the atomic transaction
+      const [taxLaw] = await this.taxLawModel.create(
+        [
+          {
+            title: parsed.title,
+            year: parsed.year,
+            description: parsed.description,
+            totalSections: 0,
+          },
+        ],
+        { session },
+      );
+
+      let totalSectionsCount = 0;
+
+      for (const ch of parsed.chapters || []) {
+        // 3️⃣ Create Chapter
+        const [chapter] = await this.chapterModel.create(
+          [
+            {
+              taxLaw: taxLaw._id,
+              title: ch.title,
+              number: ch.number,
+            },
+          ],
+          { session },
+        );
+
+        for (const pt of ch.parts || []) {
+          // 4️⃣ Create Part
+          const [part] = await this.partModel.create(
+            [
+              {
+                chapter: chapter._id,
+                title: pt.title,
+                number: pt.number,
+              },
+            ],
+            { session },
+          );
+
+          // 5️⃣ Prepare Sections
+          const sectionData = pt.sections.map((sec) => ({
+            part: part._id,
+            taxLaw: taxLaw._id,
+            title: sec.title,
+            number: sec.number,
+            content: sec.content,
+          }));
+
+          const createdSections = await this.sectionModel.insertMany(
+            sectionData,
+            { session },
+          );
+          totalSectionsCount += createdSections.length;
+
+          // 6️⃣ Prepare Subsections
+          const allSubsections: any[] = [];
+          const sectionNumToIdMap = new Map();
+
+          createdSections.forEach((s, index) => {
+            sectionNumToIdMap.set(pt.sections[index].number, s._id);
+          });
+
+          pt.sections.forEach((sec) => {
+            const sectionId = sectionNumToIdMap.get(sec.number);
+            if (sec.subsections?.length > 0) {
+              sec.subsections.forEach((sub) => {
+                allSubsections.push({
+                  section: sectionId,
+                  number: sub.number,
+                  content: sub.content,
+                });
+              });
+            }
+          });
+
+          // 7️⃣ Bulk Insert Subsections
+          if (allSubsections.length > 0) {
+            await this.subSectionModel.insertMany(allSubsections, { session });
+          }
+        }
+      }
+
+      // 8️⃣ Handle Schedules
+      if (parsed.schedules?.length > 0) {
+        await this.scheduleModel.insertMany(
+          parsed.schedules.map((sch) => ({ ...sch, taxLaw: taxLaw._id })),
+          { session },
+        );
+      }
+
+      // 9️⃣ Final update for the count
+      await this.taxLawModel.updateOne(
+        { _id: taxLaw._id },
+        { totalSections: totalSectionsCount },
+        { session },
+      );
+
+      // 🔟 Commit the Transaction
+      await session.commitTransaction();
+      return taxLaw;
+    } catch (error) {
+      // 1️⃣1️⃣ Rollback the Transaction on failure
+      await session.abortTransaction();
+      console.error(
+        'FAILED TO PROCESS TAX ACT. TRANSACTION ROLLED BACK:',
+        error,
+      );
+      throw error;
+    } finally {
+      // 1️⃣2️⃣ Always end the session
+      await session.endSession();
+    }
+  }
+
   async search() {}
   async findLawById(taxLawId: string) {
     /**
@@ -737,6 +865,165 @@ export class TaxLawsRepository {
     const law = await this.taxLawModel.findById(id);
     return law;
   }
+
+  async findTaxLawChapterByChapterId(chapterId: string) {
+    const id = new Types.ObjectId(chapterId);
+
+    const result = await this.chapterModel.aggregate([
+      {
+        $match: { _id: id },
+      },
+
+      // 🔹 Join Parts
+      {
+        $lookup: {
+          from: 'parts',
+          localField: '_id',
+          foreignField: 'chapter',
+          as: 'parts',
+        },
+      },
+
+      // 🔹 Join Sections inside each Part
+      {
+        $lookup: {
+          from: 'sections',
+          localField: 'parts._id',
+          foreignField: 'part',
+          as: 'sections',
+        },
+      },
+
+      // 🔹 Join Subsections
+      {
+        $lookup: {
+          from: 'subsections',
+          localField: 'sections._id',
+          foreignField: 'section',
+          as: 'subsections',
+        },
+      },
+
+      // 🔥 Restructure (VERY IMPORTANT)
+      {
+        $addFields: {
+          parts: {
+            $map: {
+              input: '$parts',
+              as: 'part',
+              in: {
+                _id: '$$part._id',
+                title: '$$part.title',
+                number: '$$part.number',
+
+                sections: {
+                  $map: {
+                    input: {
+                      $filter: {
+                        input: '$sections',
+                        as: 'sec',
+                        cond: { $eq: ['$$sec.part', '$$part._id'] },
+                      },
+                    },
+                    as: 'section',
+                    in: {
+                      _id: '$$section._id',
+                      title: '$$section.title',
+                      number: '$$section.number',
+
+                      subsections: {
+                        $filter: {
+                          input: '$subsections',
+                          as: 'sub',
+                          cond: {
+                            $eq: ['$$sub.section', '$$section._id'],
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+
+      // 🔹 Clean up unwanted flat arrays
+      {
+        $project: {
+          sections: 0,
+          subsections: 0,
+        },
+      },
+    ]);
+
+    return result[0];
+  }
+
+  async findTaxLaws(): Promise<TaxLawDocument[]> {
+    /**
+     * Returns the list of laws (title, year, etc.).
+     * Use this for the main landing page.
+     */
+
+    const taxLaws = await this.taxLawModel.aggregate([
+      {
+        $match: { status: TaxLawStatus.PUBLISHED },
+      },
+      {
+        $sort: { year: -1 },
+      },
+      {
+        $lookup: {
+          from: 'chapters', // collection name
+          localField: '_id',
+          foreignField: 'taxLaw',
+          as: 'chapters',
+        },
+      },
+      {
+        $project: {
+          title: 1,
+          year: 1,
+          description: 1,
+          totalSections: 1,
+          chapters: {
+            _id: 1,
+            title: 1,
+            number: 1,
+          },
+        },
+      },
+    ]);
+
+    return taxLaws;
+  }
+  async searchTaxLaw(queryWithPaginationDto: QueryWithPaginationDto) {
+    /**
+     * This handles your "Chapter 1, Section 2" logic.
+
+If the user types "Section 2," you look for taxLaw: id and number: "2" in the Section collection.
+
+Return the ID of that section so the frontend can "jump" to it.
+     */
+  }
+  async getTaxLawSectionBySectionId(sectionId: string) {
+    /**
+     * Returns the full text of a specific section and its
+     * subsections. This is called when the user finally selects a
+     * section from the TOC or a search result.
+     */
+  }
+  async getTaxLawsTableOfCotent(taxLawId: string) {
+    /**
+     * Returns the "Table of Contents."
+
+Returns Chapters -> Parts -> Section Titles/Numbers (but not section content).
+
+This allows the user to see the structure and click where they want to go.
+     */
+  }
   async findSectionById(sectionId: string) {
     const id = new Types.ObjectId(sectionId);
 
@@ -757,4 +1044,91 @@ export class TaxLawsRepository {
     sectionNumber: string,
     subSectionNumber: string,
   ) {}
+
+  async createDraft(targetId: string, parsed: any) {
+    return await this.taxLawModel.create({
+      _id: targetId,
+      ...parsed,
+      status: 'PROCESSING',
+      totalSections: 0,
+    });
+  }
+
+  async createChapter(data: any) {
+    return await this.chapterModel.create(data);
+  }
+
+  async createPart(data: any) {
+    return await this.partModel.create(data);
+  }
+
+  async insertSections(sections: any[]) {
+    return await this.sectionModel.insertMany(sections);
+  }
+
+  async insertSubSections(subSections: any[]) {
+    return await this.subSectionModel.insertMany(subSections);
+  }
+
+  async publishLaw(taxLawId: any, totalSections: number) {
+    return await this.taxLawModel.updateOne(
+      { _id: taxLawId },
+      { totalSections, status: 'PUBLISHED' },
+    );
+  }
+
+  async markAsFailed(taxLawId: any) {
+    if (taxLawId) {
+      await this.taxLawModel.updateOne({ _id: taxLawId }, { status: 'FAILED' });
+    }
+  }
+
+  // --- CLEANUP METHODS ---
+
+  async findProcessingLaw(targetId: string) {
+    return await this.taxLawModel.findOne({
+      _id: targetId,
+      status: 'PROCESSING',
+    });
+  }
+
+  async getRelatedIds(taxLawId: any) {
+    const chapters = await this.chapterModel
+      .find({ taxLaw: taxLawId })
+      .select('_id')
+      .lean();
+    const chapterIds = chapters.map((c) => c._id);
+
+    const sections = await this.sectionModel
+      .find({ taxLaw: taxLawId })
+      .select('_id')
+      .lean();
+    const sectionIds = sections.map((s) => s._id);
+
+    const parts = await this.partModel
+      .find({ chapter: { $in: chapterIds } })
+      .select('_id')
+      .lean();
+    const partIds = parts.map((p) => p._id);
+
+    return { chapterIds, sectionIds, partIds };
+  }
+
+  async purgeLawData(
+    taxLawId: any,
+    related: { chapterIds: any[]; sectionIds: any[]; partIds: any[] },
+  ) {
+    await this.subSectionModel.deleteMany({
+      section: { $in: related.sectionIds },
+    });
+    await this.sectionModel.deleteMany({ taxLaw: taxLawId });
+    await this.partModel.deleteMany({ _id: { $in: related.partIds } });
+    await this.chapterModel.deleteMany({ taxLaw: taxLawId });
+    await this.scheduleModel.deleteMany({ taxLaw: taxLawId });
+    await this.taxLawModel.deleteOne({ _id: taxLawId });
+  }
+
+  async insertSchedules(schedules: any[]) {
+    return await this.scheduleModel.insertMany(schedules);
+  }
 }

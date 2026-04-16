@@ -1,6 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
+export enum TaxLawStatus {
+  PROCESSING = 'PROCESSING',
+  PUBLISHED = 'PUBLISHED',
+  FAILED = 'FAILED',
+}
 export type TaxLawDocument = HydratedDocument<TaxLaw>;
 
 @Schema({ timestamps: true })
@@ -22,6 +27,14 @@ export class TaxLaw {
 
   @Prop({ default: 0 })
   totalSections!: number;
+
+  @Prop({
+    type: String,
+    enum: TaxLawStatus,
+    default: TaxLawStatus.PROCESSING,
+    index: true, // Efficiently filter out drafts
+  })
+  status!: TaxLawStatus;
 
   @Prop({ default: true })
   isActive!: boolean;

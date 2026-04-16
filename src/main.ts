@@ -17,6 +17,7 @@ async function bootstrap() {
   app.setGlobalPrefix('/api/v1');
 
   const mailQueue = app.get<Queue>(getQueueToken('mail'));
+  const taxLawQueue = app.get<Queue>(getQueueToken('tax-law-queue'));
 
   // Bull Board Express adapter
   const serverAdapter = new ExpressAdapter();
@@ -24,7 +25,7 @@ async function bootstrap() {
 
   // Create Bull Board
   const { addQueue, removeQueue, replaceQueues } = createBullBoard({
-    queues: [new BullAdapter(mailQueue)],
+    queues: [new BullAdapter(mailQueue), new BullAdapter(taxLawQueue)],
     serverAdapter,
   });
 
