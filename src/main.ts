@@ -9,6 +9,7 @@ import { Queue } from 'bull';
 import { AppModule } from './app.module';
 import { MongoExceptionFilter } from './common/filters/mongo-exception.filter';
 import { GlobalResponseInterceptor } from './common/interceptor/global-response.interceptor';
+import { TaxLawsRepository } from './modules/tax-laws/repositories/tax-laws.repository';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -22,6 +23,15 @@ async function bootstrap() {
   // Bull Board Express adapter
   const serverAdapter = new ExpressAdapter();
   serverAdapter.setBasePath('/admin/queues');
+
+  const taxLawId = '69df523e8f9f618012c0dd87';
+
+  const repo = app.get(TaxLawsRepository);
+  // await repo.countChapters(taxLawId);
+  // await repo.countParts();
+  // await repo.countSchedules();
+  // await repo.countSections();
+  // await repo.countSubsections();
 
   // Create Bull Board
   const { addQueue, removeQueue, replaceQueues } = createBullBoard({

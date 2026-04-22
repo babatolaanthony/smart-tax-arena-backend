@@ -125,8 +125,9 @@ export class TaxLawsController {
     status: 500,
     description: 'Internal server error',
   })
-  async findTaxLaws() {
-    return await this.taxLawsService.findTaxLaws();
+  async findTaxLaws(@Query() queryWithPaginationDto: QueryWithPaginationDto) {
+    console.log('I am being called for new query...');
+    return await this.taxLawsService.findTaxLaws(queryWithPaginationDto);
   }
 
   @Get('get-tax-law-toc/:taxLawId/toc')
@@ -155,6 +156,33 @@ export class TaxLawsController {
   })
   async getTaxLawsTableOfCotent(@Param('taxLawId') taxLawId: string) {
     return await this.taxLawsService.getTaxLawsTableOfCotent(taxLawId);
+  }
+
+  @Get('get-tax-law-structure-by-taxId/:taxId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.admin, Role.user)
+  @ApiBearerAuth('JWT-auth')
+  @SuccessMessage('Tax law structure fetched successfully')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Fetching tax law structure',
+    description: 'This is the endpoint for fetching tax law structure.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Tax law structure fetched successfully',
+    type: ApiResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Unable to fetch tax law structure.',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  })
+  async getTaxLawStructureByTaxId(@Param('taxId') taxId: string) {
+    return await this.taxLawsService.getTaxLawStructureByTaxId(taxId);
   }
 
   @Get('get-tax-law-section-by-sectionId/:sectionId')
@@ -191,8 +219,37 @@ export class TaxLawsController {
   }
 
   @Get('get-tax-law-by-id/:taxLawId')
-  async findLawById(@Param('taxLawId') taxLawId: string) {
-    return await this.taxLawsService.findLawById(taxLawId);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.admin, Role.user)
+  @ApiBearerAuth('JWT-auth')
+  @SuccessMessage('Tax law fetched successfully.')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get Tax law',
+    description:
+      'This is the endpoint for fetching content for a particular tax law.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Tax law fetched successfully.',
+    type: ApiResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Unable to fetch tax law content.',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  })
+  async findLawById(
+    @Param('taxLawId') taxLawId: string,
+    @Query() queryWithPaginationDto: QueryWithPaginationDto,
+  ) {
+    return await this.taxLawsService.findLawById(
+      taxLawId,
+      queryWithPaginationDto,
+    );
   }
 
   @Get('get-tax-law-chapter-by-chapter-id/:chapterId')

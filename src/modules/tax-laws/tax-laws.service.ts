@@ -59,8 +59,10 @@ export class TaxLawsService {
     };
   }
 
-  async findTaxLaws() {
-    const taxLaws = await this.taxLawsRepository.findTaxLaws();
+  async findTaxLaws(queryWithPaginationDto: QueryWithPaginationDto) {
+    const taxLaws = await this.taxLawsRepository.findTaxLaws(
+      queryWithPaginationDto,
+    );
     return taxLaws;
   }
   async searchTaxLaw(queryWithPaginationDto: QueryWithPaginationDto) {
@@ -80,10 +82,23 @@ export class TaxLawsService {
     return taxLaws;
   }
 
-  async findLawById(taxLawId: string) {
+  async getTaxLawStructureByTaxId(taxId: string) {
+    const taxLaw =
+      await this.taxLawsRepository.getTaxLawStructureByTaxId(taxId);
+    console.log('taxLaw:', taxLaw);
+    return taxLaw;
+  }
+
+  async findLawById(
+    taxLawId: string,
+    queryWithPaginationDto: QueryWithPaginationDto,
+  ) {
     // Ensure your repository filters by { status: 'PUBLISHED' }
     // so users don't see half-finished laws!
-    return await this.taxLawsRepository.findLawById(taxLawId);
+    return await this.taxLawsRepository.findLawById(
+      taxLawId,
+      queryWithPaginationDto,
+    );
   }
 
   async findTaxLawChapterByChapterId(chapterId: string) {
