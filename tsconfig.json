@@ -21,6 +21,5 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "types": ["multer"]
-  },
-  "exclude": ["node_modules", "dist"]
+  }
 }
